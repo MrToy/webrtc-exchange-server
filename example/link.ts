@@ -1,4 +1,3 @@
-import EventEmitter from "events";
 import { io } from "socket.io-client";
 
 const peerConfig: RTCConfiguration = {
@@ -9,13 +8,10 @@ const peerConfig: RTCConfiguration = {
   ],
 };
 
-export class LinkManager extends EventEmitter {
-  pc: RTCPeerConnection;
-  constructor(socket_url: string, code: string) {
-    super();
+export function createDataChannel(socket_url: string, code: string) {
+  return new Promise<RTCDataChannel>((resolve, reject) => {
     const socket = io(socket_url);
     const pc = new RTCPeerConnection(peerConfig);
-    this.pc = pc;
     pc.addEventListener(
       "connectionstatechange",
       (ev) => {
@@ -28,7 +24,7 @@ export class LinkManager extends EventEmitter {
       false
     );
     pc.addEventListener("datachannel", (ev) => {
-      this.onDataChannel(ev.channel);
+      resolve(ev.channel);
     });
     socket.on("candidate", ([sid, candidate]) => {
       pc.addIceCandidate(new RTCIceCandidate(candidate));
@@ -44,7 +40,7 @@ export class LinkManager extends EventEmitter {
     });
     socket.on("link", async (sid) => {
       const dc = pc.createDataChannel("data");
-      this.onDataChannel(dc);
+      resolve(dc);
       pc.onicecandidate = (e) => {
         if (e.candidate) {
           socket.emit("candidate", [sid, e.candidate]);
@@ -55,8 +51,5 @@ export class LinkManager extends EventEmitter {
       socket.emit("offer", [sid, offer]);
     });
     socket.emit("link", code);
-  }
-  onDataChannel(dc: RTCDataChannel): void {
-    this.emit("datachannel", dc);
-  }
+  });
 }
