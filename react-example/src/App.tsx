@@ -4,8 +4,17 @@ import './App.css';
 import {createDataChannel} from './link'
 
 function App() {
-  useEffect(()=>{
-    createDataChannel("ws://127.0.0.1:8080","test")
+  //@ts-ignore
+  useEffect(async ()=>{
+    const dc = await createDataChannel("ws://127.0.0.1:8080","test")
+    dc.onopen =()=>{
+      console.log("open dc")
+      dc.send("hello world")
+      console.log(dc)
+    }
+    dc.onmessage=(e)=>{
+      console.log("message",e.data)
+    }
   },[])
   return (
     <div className="App">
