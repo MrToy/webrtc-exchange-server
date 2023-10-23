@@ -1,52 +1,63 @@
-const express = require("express");
-const cors = require("cors");
+import WebSocket, { WebSocketServer } from "ws";
+import express from "express";
+import http from "http";
+import cors from "cors";
 const app = express();
-const http = require("http");
-const { Server } = require("socket.io");
 const server = http.createServer(app);
 
-const io = new Server(server, {
-  cors: {
-    methods: ["GET", "POST"],
-    origin: "*",
-  },
-});
+const wss = new WebSocketServer({ server });
+
+const waitList: Map<WebSocket, string> = new Map();
+const pairList: Map<WebSocket, WebSocket> = new Map();
+
 app.use(cors());
 app.get("/", (req, res) => {
-  res.json({ ok: true });
+  res.send(`
+    当前等待人数: ${waitList.size}<br>
+    当前配对人数: ${pairList.size}<br>
+    当前等待列表: ${Array.from(waitList.values()).join(",")}
+  `);
 });
 
-const waitList = new Map();
-const sockets = new Map();
-
-io.on("connection", (socket) => {
-  sockets.set(socket.id, socket);
-  console.log("connection", sockets.size, socket.id);
-  socket.on("link", (code) => {
-    for (let [sid, c] of waitList) {
-      if (c === code) {
-        console.log("link start", socket.id, sid, code);
-        sockets.get(sid).emit("link", socket.id);
-        waitList.delete(sid);
-        return;
+wss.on("connection", (ws) => {
+  ws.on("message", (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      console.log(msg);
+      switch (msg.type) {
+        case "link":
+          {
+            let isPaird = false;
+            for (let [ws2, code] of waitList) {
+              if (ws !== ws2 && code === msg.code) {
+                isPaird = true;
+                waitList.delete(ws2);
+                pairList.set(ws, ws2);
+                pairList.set(ws2, ws);
+                ws.send(JSON.stringify({ type: "link" }));
+                break;
+              }
+            }
+            if (!isPaird) {
+              waitList.set(ws, msg.code);
+            }
+          }
+          break;
+        case "candidate":
+        case "offer":
+        case "answer":
+          pairList.get(ws)?.send(
+            JSON.stringify(msg)
+          );
+          break;
       }
+    } catch (e) {
+      console.log(e);
     }
-    console.log("link wait", socket.id, code);
-    waitList.set(socket.id, code);
   });
-  socket.on("candidate", ([sid, candidate]) => {
-    sockets.get(sid)?.emit("candidate", [socket.id, candidate]);
-  });
-  socket.on("offer", ([sid, offer]) => {
-    sockets.get(sid)?.emit("offer", [socket.id, offer]);
-  });
-  socket.on("answer", ([sid, answer]) => {
-    sockets.get(sid)?.emit("answer", [socket.id, answer]);
-  });
-  socket.on("disconnect", () => {
-    sockets.delete(socket.id);
-    waitList.delete(socket.id);
-    console.log("disconnect", sockets.size, socket.id);
+  ws.on("close", () => {
+    waitList.delete(ws);
+    pairList.delete(ws);
   });
 });
 
