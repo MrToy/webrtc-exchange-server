@@ -50,6 +50,8 @@ wss.on("connection", (ws) => {
             JSON.stringify(msg)
           );
           break;
+        case "ping":
+          ws.send(JSON.stringify({ type: "pong" }));
       }
     } catch (e) {
       console.log(e);
